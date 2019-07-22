@@ -4,16 +4,30 @@ import (
 	"github.com/astaxie/beego/config"
 	log "github.com/astaxie/beego/logs"
 	"github.com/go-redis/redis"
+	"github.com/hashicorp/consul/api"
+	"go-seckill/api/entity"
 )
 
 var (
-	Config      config.Configer
-	RedisClient *redis.Client
+	Config       config.Configer
+	RedisClient  *entity.RedisConfig
+	SecKillCtx   *entity.SecKillContext
+	ConsulClient *api.Client
 )
 
 func Init() {
+	initCtx()
 	initConfig()
 	initRedis()
+	initConsul()
+}
+
+func initCtx() {
+	SecKillCtx = &entity.SecKillContext{
+		ProductInfoMap: make(map[int32]*entity.ProductInfo, 1024),
+		RequestChan:    make(chan *entity.Request, 1024),
+		UserConnMap:    make(map[string]chan *entity.Response, 1024),
+	}
 }
 
 // 初始化redis
@@ -31,7 +45,9 @@ func initRedis() {
 		log.Error("Connect redis failed. Error : %v", err)
 		panic(err.Error())
 	}
-	RedisClient = c
+	RedisClient.Client = c
+	RedisClient.IpBlackHash = Config.String("redis.blackIps")
+	RedisClient.IdBlackHash = Config.String("redis.blackIds")
 }
 
 //初始化配置
@@ -42,4 +58,16 @@ func initConfig() {
 		panic("init config failed")
 	}
 	Config = iniConf
+}
+
+func initConsul() {
+	addr := Config.String("consul.addr")
+	conf := api.DefaultConfig()
+	conf.Address = addr
+	client, err := api.NewClient(conf)
+	if err != nil {
+		log.Error("init consul failed:", err)
+		panic(err.Error())
+	}
+	ConsulClient = client
 }
